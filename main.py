@@ -123,24 +123,18 @@ class Piece:
                     valid = True
                     rank_dir = 1 - 2 * (movement_array[1] < 0) if movement_array[1] != 0 else 0
                     file_dir = 1 - 2 * (movement_array[0] < 0) if movement_array[0] != 0 else 0
-                    print(movement_array)
                     if movement_array[1] == 0:
-                        print("hi1")
                         for i in range(self.pos[0] + file_dir, pos[0] + file_dir, file_dir):
                             destination = board.grid[self.pos[1]][i]
-                            print(destination)
                             if destination is not None and destination != target:
                                 valid = False
                     elif movement_array[0] == 0:
-                        print("hi2")
                         for i in range(self.pos[1] + rank_dir, pos[1] + rank_dir, rank_dir):
                             destination = board.grid[i][self.pos[0]]
-                            print(destination)
                             if destination is not None and destination != target:
                                 valid = False
                     if valid and not self.moved:
                         board.castle[self.color == "black"][self.pos[0] == 0] = False
-                        print(board.castle)
 
             if valid:
                 board.grid[pos[1]][pos[0]] = board.grid[self.pos[1]][self.pos[0]]
