@@ -6,31 +6,6 @@ import math
 from pygame.locals import *
 from data.assets import *
 
-# 3d3d3d
-SQUARE_SIZE = 16
-PIECE_COLORKEY = (255, 232, 232)
-
-pygame.init()
-pygame.mixer.pre_init(44100, -16, 2, 512)  # freq, size, mono/stereo, buffer
-pygame.mixer.set_num_channels(64)
-
-frame_rate = 60
-WINDOW_SIZE = (1920, 1080)
-DISPLAY_SIZE = (320, 180)
-MONITOR_SIZE = (pygame.display.Info().current_w, pygame.display.Info().current_h)
-
-validation = {
-    "pawn": ((0, 1), (1, 1), (-1, 1), (0, 2), (0, -1), (1, -1), (-1, -1), (0, -2)),
-    "knight": ((2, 1), (2, -1), (1, 2), (1, -2), (-1, 2), (-1, -2), (-2, 1), (-2, -1)),
-    "bishop": (
-        (1, 1), (2, 2), (3, 3), (4, 4), (5, 5), (6, 6), (7, 7), (1, -1), (2, -2), (3, -3), (4, -4), (5, -5), (6, -6),
-        (7, -7), (-1, 1), (-2, 2), (-3, 3), (-4, 4), (-5, 5), (-6, 6), (-7, 7), (-1, -1), (-2, -2), (-3, -3), (-4, -4),
-        (-5, -5), (-6, -6), (-7, -7)),
-    "rook": ((1, 0), (2, 0), (3, 0), (4, 0), (5, 0), (6, 0), (7, 0), (-1, 0), (-2, 0), (-3, 0), (-4, 0), (-5, 0), (-6, 0), (-7, 0),
-             (0, 1), (0, 2), (0, 3), (0, 4), (0, 5), (0, 6), (0, 7), (0, -1), (0, -2), (0, -3), (0, -4), (0, -5), (0, -6), (0, -7)),
-    "king": ((1, 1), (1, 0), (1, -1), (0, 1), (0, -1), (-1, 1), (-1, 0), (-1, -1), (2, 0), (-2, 0))
-}
-validation["queen"] = tuple(list(validation["bishop"]) + list(validation["rook"]))
 
 
 class Piece:
@@ -47,7 +22,6 @@ class Piece:
         self.scaled = None
         self.offset = [0, 0]
         self.moved = False
-        self.passantability = False
 
     def display(self, surface, scaled=False):
         if self.image is not None:
@@ -89,15 +63,14 @@ class Piece:
         valid = False
         if movement_array == (0, 0):
             return None
-        if movement_array in validation[self.type]:
+        if movement_array in move_set[self.type]:
             target = board.grid[pos[1]][pos[0]]
             if target is not None and target.color == self.color:
                 return False
             null = target is None
             match self.type:
                 case "pawn":
-                    passant = null and list(pos) == board.en_passant[0] and (
-                                movement_array[0] == 1 or movement_array[0] == -1)
+                    passant = null and list(pos) == board.en_passant[0] and (movement_array[0] == 1 or movement_array[0] == -1)
                     if (not null and movement_array[0] != 0 and movement_array[1] * sign > 0) or passant:
                         if not passant:
                             board.piece_list.remove(target)
@@ -147,24 +120,22 @@ class Piece:
                         if destination is not None and destination != target:
                             valid = False
                 case "rook":
-                    print("hi")
                     valid = True
-                    rank_dir = 1 - 2 * (movement_array[1] < 0)
-                    file_dir = 1 - 2 * (movement_array[0] < 0)
-                    if file_dir > 0 or rank_dir > 0:
-                        end = 8
-                    else:
-                        end = 0
-                    print(end)
+                    rank_dir = 1 - 2 * (movement_array[1] < 0) if movement_array[1] != 0 else 0
+                    file_dir = 1 - 2 * (movement_array[0] < 0) if movement_array[0] != 0 else 0
                     print(movement_array)
                     if movement_array[1] == 0:
-                        for i in range(self.pos[0] + file_dir, end, file_dir):
+                        print("hi1")
+                        for i in range(self.pos[0] + file_dir, pos[0] + file_dir, file_dir):
                             destination = board.grid[self.pos[1]][i]
+                            print(destination)
                             if destination is not None and destination != target:
                                 valid = False
                     elif movement_array[0] == 0:
-                        for i in range(self.pos[1] + rank_dir, end, rank_dir):
+                        print("hi2")
+                        for i in range(self.pos[1] + rank_dir, pos[1] + rank_dir, rank_dir):
                             destination = board.grid[i][self.pos[0]]
+                            print(destination)
                             if destination is not None and destination != target:
                                 valid = False
                     if valid and not self.moved:
@@ -197,8 +168,34 @@ class Board:
         self.en_passant = [[], []]
         self.piece_list = []
         self.grid = [[None for _ in range(8)] for i in range(8)]
-        self.pieces = {}
         self.promo = "queen"
+
+
+# 3d3d3d
+SQUARE_SIZE = 16
+PIECE_COLORKEY = (255, 232, 232)
+
+pygame.init()
+pygame.mixer.pre_init(44100, -16, 2, 512)  # freq, size, mono/stereo, buffer
+pygame.mixer.set_num_channels(64)
+
+frame_rate = 60
+WINDOW_SIZE = (1920, 1080)
+DISPLAY_SIZE = (320, 180)
+MONITOR_SIZE = (pygame.display.Info().current_w, pygame.display.Info().current_h)
+
+move_set = {
+    "pawn": ((0, 1), (1, 1), (-1, 1), (0, 2), (0, -1), (1, -1), (-1, -1), (0, -2)),
+    "knight": ((2, 1), (2, -1), (1, 2), (1, -2), (-1, 2), (-1, -2), (-2, 1), (-2, -1)),
+    "bishop": (
+        (1, 1), (2, 2), (3, 3), (4, 4), (5, 5), (6, 6), (7, 7), (1, -1), (2, -2), (3, -3), (4, -4), (5, -5), (6, -6),
+        (7, -7), (-1, 1), (-2, 2), (-3, 3), (-4, 4), (-5, 5), (-6, 6), (-7, 7), (-1, -1), (-2, -2), (-3, -3), (-4, -4),
+        (-5, -5), (-6, -6), (-7, -7)),
+    "rook": ((1, 0), (2, 0), (3, 0), (4, 0), (5, 0), (6, 0), (7, 0), (-1, 0), (-2, 0), (-3, 0), (-4, 0), (-5, 0), (-6, 0), (-7, 0),
+             (0, 1), (0, 2), (0, 3), (0, 4), (0, 5), (0, 6), (0, 7), (0, -1), (0, -2), (0, -3), (0, -4), (0, -5), (0, -6), (0, -7)),
+    "king": ((1, 1), (1, 0), (1, -1), (0, 1), (0, -1), (-1, 1), (-1, 0), (-1, -1), (2, 0), (-2, 0))
+}
+move_set["queen"] = tuple(list(move_set["bishop"]) + list(move_set["rook"]))
 
 
 def read_fen(fen, board):  # default fen: rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
@@ -250,6 +247,8 @@ def read_fen(fen, board):  # default fen: rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNB
                 case 'K':
                     init_piece = Piece('king', 'white', x, y)
                     init_piece.load_image()
+                case _:
+                    init_piece = None
             board.grid[rank][file] = init_piece
             board.piece_list.append(init_piece) if init_piece is not None else ...
             file += 1
@@ -279,8 +278,7 @@ clock = pygame.time.Clock()
 display = pygame.Surface(DISPLAY_SIZE)
 screen = pygame.display.set_mode(WINDOW_SIZE, 0, 32)
 board_loc = [(DISPLAY_SIZE[0] - 128) // 2, (DISPLAY_SIZE[1] - 128) // 2]
-board_img = pygame.image.load("data/chess_sprites/board.png").convert()
-board = Board(board_img, (DISPLAY_SIZE[0] - 128) // 2, (DISPLAY_SIZE[1] - 128) // 2)
+board = Board(pygame.image.load("data/chess_sprites/board.png").convert(), (DISPLAY_SIZE[0] - 128) // 2, (DISPLAY_SIZE[1] - 128) // 2)
 
 clicked_piece = None
 drag = False
@@ -360,7 +358,7 @@ while running:
             hover_square_loc = (int(board.x + ((mx - board.x) // 16) * 16), int(board.y + ((my - board.y) // 16) * 16))
             clicked_piece.update()
 
-    display.blit(pygame.transform.flip(board.image, False, False), (board.x, board.y))
+    display.blit(board.image, (board.x, board.y))
     if og_square_loc is not None:
         display.blit(og_square, og_square_loc)
     if hover_square_loc is not None and hover_square_loc != og_square_loc:
