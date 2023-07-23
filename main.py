@@ -7,6 +7,24 @@ from pygame.locals import *
 from data.assets import *
 
 
+class Board:
+    def __init__(self, image, x, y):
+        self.image = image
+        self.x = x
+        self.y = y
+        self.turn = None
+        self.castle = [[False, False], [False, False]]
+        self.half_move = 0
+        self.full_move = 0
+        self.en_passant = [[], []]
+        self.piece_list = []
+        self.kings = {}
+        self.check = [False, None]
+        self.grid = [[None for _ in range(8)] for i in range(8)]
+        self.grid_cache = None
+        self.cache = self.grid, self.piece_list, self.castle
+        self.promo = "queen"
+
 
 class Piece:
     def __init__(self, ptype, color, x, y):
@@ -49,147 +67,183 @@ class Piece:
 
     def get_board_pos(self, board_loc, init=False):
         if init:
-            self.pos = (self.x - board_loc[0]) // SQUARE_SIZE, abs((self.y - board_loc[1]) // SQUARE_SIZE - 7)
+            self.pos = int((self.x - board_loc[0]) // SQUARE_SIZE), int(abs((self.y - board_loc[1]) // SQUARE_SIZE - 7))
             return self.pos
-        return (self.x - board_loc[0]) // SQUARE_SIZE, (self.y - board_loc[1]) // SQUARE_SIZE
+        return int((self.x - board_loc[0]) // SQUARE_SIZE), int(abs((self.y - board_loc[1]) // SQUARE_SIZE - 7))
 
-    def check_valid(self, pos, board):  # why did i implement it like this
-        if self.color != board.turn:
-            return False
+    def check_valid(self, pos, board, checking=False, king=None):  # why did i implement it like this
+        ret = {
+            "valid": False,
+            "passant": False,
+            "target": None,
+            "promo": False,
+            "castle": None
+        }
+        if self.color != board.turn and not checking:
+            return ret
+
         sign = 1 - 2 * (self.color == "black")
-        pos = int(pos[0]), int(pos[1])
-        self.pos = int(self.pos[0]), int(self.pos[1])
         movement_array = (int(pos[0] - self.pos[0]), int(pos[1] - self.pos[1]))  # fd, rd
-        valid = False
-        if movement_array == (0, 0):
-            return None
+
         if movement_array in move_set[self.type]:
-            target = board.grid[pos[1]][pos[0]]
-            if target is not None and target.color == self.color:
-                return False
-            null = target is None
+            ret["target"] = board.grid[pos[1]][pos[0]] if not checking else king
+            if ret["target"] is not None and ret["target"].color == self.color:
+                return ret
+            null = ret["target"] is None
             match self.type:
                 case "pawn":
-                    passant = null and list(pos) == board.en_passant[0] and (movement_array[0] == 1 or movement_array[0] == -1)
-                    if (not null and movement_array[0] != 0 and movement_array[1] * sign > 0) or passant:
-                        if not passant:
-                            board.piece_list.remove(target)
-                        else:
-                            board.piece_list.remove(board.en_passant[1])
-                            board.grid[board.en_passant[1].pos[1]][board.en_passant[1].pos[0]] = None
-                        board.grid[pos[1]][pos[0]] = board.grid[self.pos[1]][self.pos[0]]
-                        board.grid[self.pos[1]][self.pos[0]] = None
-                        board.full_move += 1
-                        board.en_passant = ([], None)
-                        self.pos = pos
-                        self.moved = True
-                        if pos[1] == 7 or pos[1] == 0:
-                            self.type = board.promo
-                            self.load_image()
-                        return True
+                    ret["passant"] = null and list(pos) == board.en_passant[0] and (
+                            movement_array[0] == 1 or movement_array[0] == -1)
+                    if (not null and movement_array[0] != 0 and movement_array[1] * sign > 0) or ret["passant"]:
+                        ret["valid"] = True
+                        if not checking:
+                            if pos[1] == 7 or pos[1] == 0:
+                                ret["promo"] = True
+
                     elif not null or movement_array[0] != 0:
-                        return False
+                        return ret
+
                     if not self.moved and movement_array[1] == 2 * sign:
                         if board.grid[pos[1] - 1 + 2 * (movement_array[1] < 0)][pos[0]] is None:
-                            board.grid[pos[1]][pos[0]] = board.grid[self.pos[1]][self.pos[0]]
-                            board.grid[self.pos[1]][self.pos[0]] = None
-                            board.full_move += 1
-                            self.pos = pos
-                            self.moved = True
-                            board.en_passant = ([self.pos[0], self.pos[1] - sign], self)
-                            return True
+                            board.en_passant = ([self.pos[0], self.pos[1] + sign], self)
+                            ret["valid"] = True
+
                     if movement_array[1] == 1 * sign:
-                        valid = True
+                        ret["valid"] = True
                         if pos[1] == 7 or pos[1] == 0:
-                            self.type = "queen"
-                            self.load_image()  # now implement promotion here... bruh i think i need to implement UI
+                            ret["promo"] = True  # now implement promotion... bruh i think i need to implement UI
+
                 case "knight":
                     if (movement_array[0] == 2 or movement_array[0] == -2) and (
                             movement_array[1] == 1 or movement_array[1] == -1):
-                        valid = True
+                        ret["valid"] = True
                     elif (movement_array[0] == 1 or movement_array[0] == -1) and (
                             movement_array[1] == 2 or movement_array[1] == -2):
-                        valid = True
+                        ret["valid"] = True
+
                 case "bishop":
-                    valid = True
+                    ret["valid"] = True
                     rank_dir = 1 - 2 * (movement_array[1] < 0)
                     file_dir = 1 - 2 * (movement_array[0] < 0)
                     for i in range(self.pos[1] + rank_dir, pos[1] + rank_dir, rank_dir):
                         destination = board.grid[i][
                             self.pos[0] + i * rank_dir * file_dir - self.pos[1] * rank_dir * file_dir]
-                        if destination is not None and destination != target:
-                            valid = False
+                        if destination is not None:
+                            if ret["target"] is not None:
+                                if destination.pos != ret["target"].pos:
+                                    ret["valid"] = False
+                            else:
+                                ret["valid"] = False
+
                 case "rook":
-                    valid = True
+                    ret["valid"] = True
                     rank_dir = 1 - 2 * (movement_array[1] < 0) if movement_array[1] != 0 else 0
                     file_dir = 1 - 2 * (movement_array[0] < 0) if movement_array[0] != 0 else 0
                     if movement_array[1] == 0:
                         for i in range(self.pos[0] + file_dir, pos[0] + file_dir, file_dir):
                             destination = board.grid[self.pos[1]][i]
-                            if destination is not None and destination != target:
-                                valid = False
+                            if destination is not None:
+                                if ret["target"] is not None:
+                                    if destination.pos != ret["target"].pos:
+                                        ret["valid"] = False
+                                else:
+                                    ret["valid"] = False
                     elif movement_array[0] == 0:
                         for i in range(self.pos[1] + rank_dir, pos[1] + rank_dir, rank_dir):
                             destination = board.grid[i][self.pos[0]]
-                            if destination is not None and destination != target:
-                                valid = False
-                    if valid and not self.moved:
+                            if destination is not None:
+                                if ret["target"] is not None:
+                                    if destination.pos != ret["target"].pos:
+                                        ret["valid"] = False
+                                else:
+                                    ret["valid"] = False
+                    if ret["valid"] and not self.moved and not checking:
                         board.castle[self.color == "black"][self.pos[0] == 0] = False
 
-            if valid:
-                board.grid[pos[1]][pos[0]] = board.grid[self.pos[1]][self.pos[0]]
-                board.grid[self.pos[1]][self.pos[0]] = None
-                board.full_move += 1
-                board.en_passant = ([], None)
-                board.piece_list.remove(target) if not null else ...
-                self.pos = pos
-                self.moved = True
-            return valid
+                case "queen":
+                    ret["valid"] = True
+                    if movement_array in move_set["bishop"]:
+                        rank_dir = 1 - 2 * (movement_array[1] < 0)
+                        file_dir = 1 - 2 * (movement_array[0] < 0)
+                        for i in range(self.pos[1] + rank_dir, pos[1] + rank_dir, rank_dir):
+                            destination = board.grid[i][
+                                self.pos[0] + i * rank_dir * file_dir - self.pos[1] * rank_dir * file_dir]
+                            if destination is not None:
+                                if ret["target"] is not None:
+                                    if destination.pos != ret["target"].pos:
+                                        ret["valid"] = False
+                                else:
+                                    ret["valid"] = False
+                    elif movement_array in move_set["rook"]:
+                        rank_dir = 1 - 2 * (movement_array[1] < 0) if movement_array[1] != 0 else 0
+                        file_dir = 1 - 2 * (movement_array[0] < 0) if movement_array[0] != 0 else 0
+                        if movement_array[1] == 0:
+                            for i in range(self.pos[0] + file_dir, pos[0] + file_dir, file_dir):
+                                destination = board.grid[self.pos[1]][i]
+                                if destination is not None:
+                                    if ret["target"] is not None:
+                                        if destination.pos != ret["target"].pos:
+                                            ret["valid"] = False
+                                    else:
+                                        ret["valid"] = False
+                        elif movement_array[0] == 0:
+                            for i in range(self.pos[1] + rank_dir, pos[1] + rank_dir, rank_dir):
+                                destination = board.grid[i][self.pos[0]]
+                                if destination is not None:
+                                    if ret["target"] is not None:
+                                        if destination.pos != ret["target"].pos:
+                                            ret["valid"] = False
+                                    else:
+                                        ret["valid"] = False
 
+                case "king":
+                    if movement_array[0] == 2 and board.castle[self.color == "black"][0]:
+                        if check_king(board, self, pos, ret["target"]) and check_king(board, self, [pos[0] - 1, pos[1]],
+                                                                                      ret["target"]):
+                            ret["valid"] = True
+                            if not checking:
+                                ret["castle"] = "left"
+                                board.castle[self.color == "black"] = [False, False]
+                    elif movement_array[0] == -2 and board.castle[self.color == "black"][1]:
+                        if check_king(board, self, pos, ret["target"]) and check_king(board, self, [pos[0] + 1, pos[1]],
+                                                                                      ret["target"]) and \
+                                board.grid[pos[1]][pos[0] - 1] is None:
+                            ret["valid"] = True
+                            if not checking:
+                                ret["castle"] = "right"
+                                board.castle[self.color == "black"] = [False, False]
+                    elif movement_array[0] != 2 and movement_array[0] != -2:
+                        if check_king(board, self, pos, ret["target"]):
+                            board.castle[self.color == "black"] = [False, False]
+                            ret["valid"] = True
+
+            return ret
         else:
-            return False
+            return ret
 
 
-class Board:
-    def __init__(self, image, x, y):
-        self.image = image
-        self.x = x
-        self.y = y
-        self.turn = None
-        self.castle = [[False, False], [False, False]]
-        self.half_move = 0
-        self.full_move = 0
-        self.en_passant = [[], []]
-        self.piece_list = []
-        self.grid = [[None for _ in range(8)] for i in range(8)]
-        self.promo = "queen"
+def check_check(board, piece, king_pos=None, checking=False, king=None):
+    result = piece.check_valid(king_pos, board, checking=True, king=king)
+    if result["valid"]:
+        board.check = [True, piece] if not checking else board.check
+        return True
+    return False
 
 
-# 3d3d3d
-SQUARE_SIZE = 16
-PIECE_COLORKEY = (255, 232, 232)
-
-pygame.init()
-pygame.mixer.pre_init(44100, -16, 2, 512)  # freq, size, mono/stereo, buffer
-pygame.mixer.set_num_channels(64)
-
-frame_rate = 60
-WINDOW_SIZE = (1920, 1080)
-DISPLAY_SIZE = (320, 180)
-MONITOR_SIZE = (pygame.display.Info().current_w, pygame.display.Info().current_h)
-
-move_set = {
-    "pawn": ((0, 1), (1, 1), (-1, 1), (0, 2), (0, -1), (1, -1), (-1, -1), (0, -2)),
-    "knight": ((2, 1), (2, -1), (1, 2), (1, -2), (-1, 2), (-1, -2), (-2, 1), (-2, -1)),
-    "bishop": (
-        (1, 1), (2, 2), (3, 3), (4, 4), (5, 5), (6, 6), (7, 7), (1, -1), (2, -2), (3, -3), (4, -4), (5, -5), (6, -6),
-        (7, -7), (-1, 1), (-2, 2), (-3, 3), (-4, 4), (-5, 5), (-6, 6), (-7, 7), (-1, -1), (-2, -2), (-3, -3), (-4, -4),
-        (-5, -5), (-6, -6), (-7, -7)),
-    "rook": ((1, 0), (2, 0), (3, 0), (4, 0), (5, 0), (6, 0), (7, 0), (-1, 0), (-2, 0), (-3, 0), (-4, 0), (-5, 0), (-6, 0), (-7, 0),
-             (0, 1), (0, 2), (0, 3), (0, 4), (0, 5), (0, 6), (0, 7), (0, -1), (0, -2), (0, -3), (0, -4), (0, -5), (0, -6), (0, -7)),
-    "king": ((1, 1), (1, 0), (1, -1), (0, 1), (0, -1), (-1, 1), (-1, 0), (-1, -1), (2, 0), (-2, 0))
-}
-move_set["queen"] = tuple(list(move_set["bishop"]) + list(move_set["rook"]))
+def check_king(board, king, pos, target):
+    cache = king.pos
+    for piece in board.piece_list:
+        if piece.color != king.color and piece != target:
+            movement_arr = pos[0] - piece.pos[0], pos[1] - piece.pos[1]
+            if movement_arr in move_set[piece.type]:
+                if piece.type == "king":
+                    return False
+                king.pos = pos
+                if check_check(board, piece, king_pos=pos, checking=True, king=king):
+                    king.pos = cache
+                    return False
+    king.pos = cache
+    return True
 
 
 def read_fen(fen, board):  # default fen: rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
@@ -223,6 +277,7 @@ def read_fen(fen, board):  # default fen: rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNB
                 case 'k':
                     init_piece = Piece('king', 'black', x, y)
                     init_piece.load_image()
+                    board.kings['black'] = init_piece
                 case 'P':
                     init_piece = Piece('pawn', 'white', x, y)
                     init_piece.load_image()
@@ -241,8 +296,10 @@ def read_fen(fen, board):  # default fen: rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNB
                 case 'K':
                     init_piece = Piece('king', 'white', x, y)
                     init_piece.load_image()
+                    board.kings['white'] = init_piece
                 case _:
                     init_piece = None
+            init_piece.get_board_pos(board_loc, init=True)
             board.grid[rank][file] = init_piece
             board.piece_list.append(init_piece) if init_piece is not None else ...
             file += 1
@@ -266,13 +323,43 @@ def read_fen(fen, board):  # default fen: rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNB
     board.full_move = int(parts[5][0])
 
 
+# 3d3d3d
+SQUARE_SIZE = 16
+PIECE_COLORKEY = (255, 232, 232)
+
+pygame.init()
+pygame.mixer.pre_init(44100, -16, 2, 512)  # freq, size, mono/stereo, buffer
+pygame.mixer.set_num_channels(64)
+
+frame_rate = 60
+WINDOW_SIZE = (1920, 1080)
+DISPLAY_SIZE = (320, 180)
+MONITOR_SIZE = (pygame.display.Info().current_w, pygame.display.Info().current_h)
+
+move_set = {
+    "pawn": ((0, 1), (1, 1), (-1, 1), (0, 2), (0, -1), (1, -1), (-1, -1), (0, -2)),
+    "knight": ((2, 1), (2, -1), (1, 2), (1, -2), (-1, 2), (-1, -2), (-2, 1), (-2, -1)),
+    "bishop": (
+        (1, 1), (2, 2), (3, 3), (4, 4), (5, 5), (6, 6), (7, 7), (1, -1), (2, -2), (3, -3), (4, -4), (5, -5), (6, -6),
+        (7, -7), (-1, 1), (-2, 2), (-3, 3), (-4, 4), (-5, 5), (-6, 6), (-7, 7), (-1, -1), (-2, -2), (-3, -3), (-4, -4),
+        (-5, -5), (-6, -6), (-7, -7)),
+    "rook": (
+        (1, 0), (2, 0), (3, 0), (4, 0), (5, 0), (6, 0), (7, 0), (-1, 0), (-2, 0), (-3, 0), (-4, 0), (-5, 0), (-6, 0),
+        (-7, 0),
+        (0, 1), (0, 2), (0, 3), (0, 4), (0, 5), (0, 6), (0, 7), (0, -1), (0, -2), (0, -3), (0, -4), (0, -5), (0, -6),
+        (0, -7)),
+    "king": ((1, 1), (1, 0), (1, -1), (0, 1), (0, -1), (-1, 1), (-1, 0), (-1, -1), (2, 0), (-2, 0))
+}
+move_set["queen"] = tuple(list(move_set["bishop"]) + list(move_set["rook"]))
+
 pygame.display.set_mode(DISPLAY_SIZE, 0, 32)
 pygame.display.set_caption("PyChess")
 clock = pygame.time.Clock()
 display = pygame.Surface(DISPLAY_SIZE)
 screen = pygame.display.set_mode(WINDOW_SIZE, 0, 32)
 board_loc = [(DISPLAY_SIZE[0] - 128) // 2, (DISPLAY_SIZE[1] - 128) // 2]
-board = Board(pygame.image.load("data/chess_sprites/board.png").convert(), (DISPLAY_SIZE[0] - 128) // 2, (DISPLAY_SIZE[1] - 128) // 2)
+board = Board(pygame.image.load("data/chess_sprites/board.png").convert(), (DISPLAY_SIZE[0] - 128) // 2,
+              (DISPLAY_SIZE[1] - 128) // 2)
 
 clicked_piece = None
 drag = False
@@ -322,8 +409,67 @@ while running:
             if event.button == 1 and drag:
                 px = (mx - board.x) // 16
                 py = (my - board.y) // 16
-                valid = clicked_piece.check_valid([px, abs(py - 7)], board)
-                if valid or valid is None:
+                pos = (int(px), int(abs(py - 7)))
+                result = clicked_piece.check_valid(pos, board)
+                if result["valid"]:
+                    board.grid[pos[1]][pos[0]] = board.grid[clicked_piece.pos[1]][clicked_piece.pos[0]]
+                    board.grid[clicked_piece.pos[1]][clicked_piece.pos[0]] = None
+                    if result["target"] is not None:
+                        if result["target"].type == "rook":
+                            match result["target"].pos:
+                                case (0, 0):
+                                    board.castle[0][1] = False
+                                case (0, 7):
+                                    board.castle[0][0] = False
+                                case (7, 0):
+                                    board.castle[1][1] = False
+                                case (7, 7):
+                                    board.castle[1][0] = False
+                        board.piece_list.remove(result["target"])
+
+                    elif result["castle"] is not None:
+                        if result["castle"] == "right":
+                            rock = board.grid[pos[1]][0]
+                            rock.pos = (pos[0] + 1, pos[1])
+                            rock.x = board.x + px * 16 + 16
+                            rock.y = board.y + py * 16
+                            rock.update()
+                            rock = None
+                            board.grid[pos[1]][pos[0] + 1] = board.grid[pos[1]][0]
+                            board.grid[pos[1]][0] = None
+                        elif result["castle"] == "left":
+                            rock = board.grid[pos[1]][7]
+                            rock.pos = (pos[0] - 1, pos[1])
+                            rock.x = board.x + px * 16 - 16
+                            rock.y = board.y + py * 16
+                            rock.update()
+                            rock = None
+                            board.grid[pos[1]][pos[0] - 1] = board.grid[pos[1]][7]
+                            board.grid[pos[1]][7] = None
+
+                    elif result["passant"]:
+                        board.piece_list.remove(board.en_passant[1])
+                        board.grid[board.en_passant[1].pos[1]][board.en_passant[1].pos[0]] = None
+
+                    if result["promo"]:
+                        clicked_piece.type = board.promo
+                        clicked_piece.load_image()
+
+                    clicked_piece.pos = pos
+                    clicked_piece.moved = True
+                    board.full_move += 1
+
+                    if board.turn == 'white':
+                        board.turn = 'black'
+                    else:
+                        board.turn = 'white'
+
+                    if board.en_passant[1] != clicked_piece:
+                        board.en_passant = ([], None)
+
+                    check_check(board, clicked_piece, board.kings[board.turn].pos, checking=False,
+                                king=board.kings[board.turn])  # implement
+
                     drag = False
                     clicked_piece.drag = False
                     clicked_piece.offset = [0, 0]
@@ -331,12 +477,8 @@ while running:
                     clicked_piece.y = board.y + py * 16
                     clicked_piece.update()
                     clicked_piece = None
-                    if valid is not None:
-                        if board.turn == 'white':
-                            board.turn = 'black'
-                        else:
-                            board.turn = 'white'
-                elif not valid:
+
+                else:
                     drag = False
                     clicked_piece.drag = False
                     clicked_piece.offset = [0, 0]
