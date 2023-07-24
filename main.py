@@ -412,22 +412,11 @@ while running:
                 pos = (int(px), int(abs(py - 7)))
                 result = clicked_piece.check_valid(pos, board)
                 if result["valid"]:
+                    board.cache = board.grid.copy(), board.piece_list.copy(), tuple(board.en_passant)
                     board.grid[pos[1]][pos[0]] = board.grid[clicked_piece.pos[1]][clicked_piece.pos[0]]
                     board.grid[clicked_piece.pos[1]][clicked_piece.pos[0]] = None
-                    if result["target"] is not None:
-                        if result["target"].type == "rook":
-                            match result["target"].pos:
-                                case (0, 0):
-                                    board.castle[0][1] = False
-                                case (0, 7):
-                                    board.castle[0][0] = False
-                                case (7, 0):
-                                    board.castle[1][1] = False
-                                case (7, 7):
-                                    board.castle[1][0] = False
-                        board.piece_list.remove(result["target"])
 
-                    elif result["castle"] is not None:
+                    if result["castle"] is not None:
                         if result["castle"] == "right":
                             rock = board.grid[pos[1]][0]
                             rock.pos = (pos[0] + 1, pos[1])
@@ -451,32 +440,56 @@ while running:
                         board.piece_list.remove(board.en_passant[1])
                         board.grid[board.en_passant[1].pos[1]][board.en_passant[1].pos[0]] = None
 
-                    if result["promo"]:
-                        clicked_piece.type = board.promo
-                        clicked_piece.load_image()
+                    if not check_king(board, board.kings[board.turn], board.kings[board.turn].pos, target=None) and clicked_piece.type != "king":
+                            board.grid = board.cache[0]
+                            board.piece_list = board.cache[1]
+                            board.en_passant = board.cache[2]
+                            drag = False
+                            clicked_piece.drag = False
+                            clicked_piece.offset = [0, 0]
+                            clicked_piece.x = og_square_loc[0]
+                            clicked_piece.y = og_square_loc[1]
+                            hover_square_loc = None
+                            clicked_piece.update()
+                            clicked_piece = None
 
-                    clicked_piece.pos = pos
-                    clicked_piece.moved = True
-                    board.full_move += 1
-
-                    if board.turn == 'white':
-                        board.turn = 'black'
                     else:
-                        board.turn = 'white'
+                        if result["target"] is not None:
+                            if result["target"].type == "rook":
+                                match result["target"].pos:
+                                    case (0, 0):
+                                        board.castle[0][1] = False
+                                    case (0, 7):
+                                        board.castle[0][0] = False
+                                    case (7, 0):
+                                        board.castle[1][1] = False
+                                    case (7, 7):
+                                        board.castle[1][0] = False
+                            board.piece_list.remove(result["target"])
 
-                    if board.en_passant[1] != clicked_piece:
-                        board.en_passant = ([], None)
+                        if result["promo"]:
+                            clicked_piece.type = board.promo
+                            clicked_piece.load_image()
 
-                    check_check(board, clicked_piece, board.kings[board.turn].pos, checking=False,
-                                king=board.kings[board.turn])  # implement
+                        clicked_piece.pos = pos
+                        clicked_piece.moved = True
+                        board.full_move += 1
 
-                    drag = False
-                    clicked_piece.drag = False
-                    clicked_piece.offset = [0, 0]
-                    clicked_piece.x = board.x + px * 16
-                    clicked_piece.y = board.y + py * 16
-                    clicked_piece.update()
-                    clicked_piece = None
+                        if board.turn == 'white':
+                            board.turn = 'black'
+                        else:
+                            board.turn = 'white'
+
+                        if board.en_passant[1] != clicked_piece:
+                            board.en_passant = ([], None)
+
+                        drag = False
+                        clicked_piece.drag = False
+                        clicked_piece.offset = [0, 0]
+                        clicked_piece.x = board.x + px * 16
+                        clicked_piece.y = board.y + py * 16
+                        clicked_piece.update()
+                        clicked_piece = None
 
                 else:
                     drag = False
