@@ -336,6 +336,7 @@ WINDOW_SIZE = (1920, 1080)
 DISPLAY_SIZE = (320, 180)
 MONITOR_SIZE = (pygame.display.Info().current_w, pygame.display.Info().current_h)
 
+
 move_set = {
     "pawn": ((0, 1), (1, 1), (-1, 1), (0, 2), (0, -1), (1, -1), (-1, -1), (0, -2)),
     "knight": ((2, 1), (2, -1), (1, 2), (1, -2), (-1, 2), (-1, -2), (-2, 1), (-2, -1)),
@@ -357,9 +358,27 @@ pygame.display.set_caption("PyChess")
 clock = pygame.time.Clock()
 display = pygame.Surface(DISPLAY_SIZE)
 screen = pygame.display.set_mode(WINDOW_SIZE, 0, 32)
+
 board_loc = [(DISPLAY_SIZE[0] - 128) // 2, (DISPLAY_SIZE[1] - 128) // 2]
 board = Board(pygame.image.load("data/chess_sprites/board.png").convert(), (DISPLAY_SIZE[0] - 128) // 2,
               (DISPLAY_SIZE[1] - 128) // 2)
+
+bui = pygame.image.load("data/chess_sprites/promo_black.png").convert()
+bui.set_colorkey(PIECE_COLORKEY)
+wui = pygame.image.load("data/chess_sprites/promo_white.png").convert()
+wui.set_colorkey(PIECE_COLORKEY)
+ui = wui
+UI_LOC = [32, 30]
+UI_NAMES = ("bishop", "knight", "queen", "rook")
+UI_RECTS = {
+    "bishop": (),
+    "knight": (),
+    "queen": (),
+    "rook": ()
+}
+for y in range(2):
+    for x in range(2):
+        UI_RECTS[UI_NAMES[y * 2 + x]] = pygame.Rect((32 + 16 * x, 30 + 16 * y), (16, 16))
 
 clicked_piece = None
 drag = False
@@ -374,13 +393,18 @@ og_square.fill((0, 0, 255))
 og_square.set_alpha(128)
 og_square_loc = None
 
+ui_square = pygame.Surface((16, 16))
+ui_square.fill((128, 128, 0))
+ui_square.set_alpha(128)
+ui_square_loc = None
+
 full_screen = False
 running = True
 
 read_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", board)
 
 while running:
-    display.fill((50, 50, 50))
+    display.fill((128, 128, 128))
     mx, my = pygame.mouse.get_pos()
     mx = mx * (DISPLAY_SIZE[0] / WINDOW_SIZE[0])
     my = my * (DISPLAY_SIZE[1] / WINDOW_SIZE[1])
@@ -405,6 +429,11 @@ while running:
                         drag = True
                         piece.update()
                         clicked_piece = piece
+                for choice in UI_RECTS:
+                    if UI_RECTS[choice].colliderect(mouse_rect):
+                        board.promo = choice
+                        ui_square_loc = (UI_RECTS[choice].x, UI_RECTS[choice].y)
+
         if event.type == MOUSEBUTTONUP:
             if event.button == 1 and drag:
                 px = (mx - board.x) // 16
@@ -477,8 +506,10 @@ while running:
 
                         if board.turn == 'white':
                             board.turn = 'black'
+                            ui = bui
                         else:
                             board.turn = 'white'
+                            ui = wui
 
                         if board.en_passant[1] != clicked_piece:
                             board.en_passant = ([], None)
@@ -514,6 +545,10 @@ while running:
         display.blit(hover_square, hover_square_loc)
     for piece in board.piece_list:
         piece.display(display, scaled=piece.drag)
+
+    if ui_square_loc is not None:
+        display.blit(ui_square, ui_square_loc)
+    display.blit(ui, UI_LOC)
 
     pygame.draw.rect(display, (255, 255, 255), mouse_rect)
     scaled_display = pygame.transform.scale(display, WINDOW_SIZE)
