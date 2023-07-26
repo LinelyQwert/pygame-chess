@@ -6,4 +6,6 @@ wow
 zip file contains executable and its assets
 
 
-not updated, got too lazy, just download py file and data file and run in same folder :oyes:
+not updated, got too lazy, just download py file and data file and run in same folder \:oyes:
+
+default 16:9 res
