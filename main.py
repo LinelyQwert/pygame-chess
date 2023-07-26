@@ -1,8 +1,6 @@
-import pygame
 import sys
-import os
-import math
 
+import pygame.display
 from pygame.locals import *
 from data.assets import *
 
@@ -332,7 +330,7 @@ pygame.mixer.pre_init(44100, -16, 2, 512)  # freq, size, mono/stereo, buffer
 pygame.mixer.set_num_channels(64)
 
 frame_rate = 60
-WINDOW_SIZE = (1920, 1080)
+WINDOW_SIZE = (pygame.display.Info().current_w // 16 * 13, pygame.display.Info().current_h // 9 * 7)
 DISPLAY_SIZE = (320, 180)
 MONITOR_SIZE = (pygame.display.Info().current_w, pygame.display.Info().current_h)
 
